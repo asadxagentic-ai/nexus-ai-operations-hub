@@ -1,0 +1,577 @@
+{
+  "name": "Nexus — AI Operations Hub",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "YOUR_ID_HERE",
+      "name": "Every 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://example.com/api/metrics/sales",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "f8b411b9-b19e-4e7d-b2c9-ee9811a98d49",
+      "name": "Fetch Sales Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        288,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://example.com/api/metrics/support",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "e25ba08d-5fdf-40c4-aff4-c605bb634e40",
+      "name": "Fetch Support Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://example.com/api/metrics/payments",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "YOUR_ID_HERE",
+      "name": "Fetch Payments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        704,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst sales = $('Fetch Sales Metrics').first()?.json ?? {};\nconst support = $('Fetch Support Queue').first()?.json ?? {};\nconst finance = $('Fetch Payments').first()?.json ?? {};\n\nconst anomalies = [];\n\nif (typeof sales.conversionRate === 'number' && sales.conversionRate < 0.02) {\n  anomalies.push({ domain: 'Sales', severity: 'high', signal: 'Checkout conversion below 2%', value: sales.conversionRate });\n}\nif (typeof sales.revenueDropPct === 'number' && sales.revenueDropPct > 15) {\n  anomalies.push({ domain: 'Sales', severity: 'critical', signal: 'Hourly revenue drop > 15%', value: sales.revenueDropPct });\n}\nif (typeof support.backlog === 'number' && support.backlog > 200) {\n  anomalies.push({ domain: 'Support', severity: 'medium', signal: 'Ticket backlog over 200', value: support.backlog });\n}\nif (typeof finance.failedPaymentsPct === 'number' && finance.failedPaymentsPct > 5) {\n  anomalies.push({ domain: 'Finance', severity: 'high', signal: 'Payment failure rate > 5%', value: finance.failedPaymentsPct });\n}\n\nconst topSeverity = anomalies.reduce((acc, a) => {\n  const rank = { low: 1, medium: 2, high: 3, critical: 4 };\n  return rank[a.severity] > rank[acc] ? a.severity : acc;\n}, 'low');\n\nreturn [{\n  json: {\n    anomalyCount: anomalies.length,\n    topSeverity,\n    anomalies,\n    snapshot: { sales, support, finance },\n    detectedAt: new Date().toISOString(),\n  },\n}];\n"
+      },
+      "id": "d314c143-b259-4452-a065-05baab3b4300",
+      "name": "Detect Anomalies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.anomalyCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8793e384-be62-48d2-bbc3-20b816832e7e",
+      "name": "Has Anomalies?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1152,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Detected \" + $json.anomalyCount + \" anomalies. Snapshot: \" + JSON.stringify($json.snapshot) + \" Anomalies: \" + JSON.stringify($json.anomalies) }}",
+        "options": {
+          "systemMessage": "You are the operations hub for a SaaS business. Investigate the provided anomalies across Sales, Support, Infrastructure, and Finance. Identify probable root causes, list 2-4 actionable next steps, propose owning team (Sales, Support, SRE, Finance, or Marketing), and rate executive impact (low/medium/high). Respond with concise Markdown.",
+          "maxIterations": 4
+        }
+      },
+      "id": "f3f359f0-7538-4ded-bc43-28fdc1fb2ec1",
+      "name": "AI Investigator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1072,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "f36d1fc0-c240-4f6b-adb4-a4f6efdd0e33",
+      "name": "GPT-5 mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        432
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "title",
+              "name": "title",
+              "value": "={{ '[' + $('Detect Anomalies').first().json.topSeverity.toUpperCase() + '] ' + $('Detect Anomalies').first().json.anomalyCount + ' anomaly(s) detected' }}",
+              "type": "string"
+            },
+            {
+              "id": "summary",
+              "name": "summary",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "anomalies",
+              "name": "anomalies",
+              "value": "={{ $('Detect Anomalies').first().json.anomalies }}",
+              "type": "array"
+            },
+            {
+              "id": "severity",
+              "name": "severity",
+              "value": "={{ $('Detect Anomalies').first().json.topSeverity }}",
+              "type": "string"
+            },
+            {
+              "id": "detectedAt",
+              "name": "detectedAt",
+              "value": "={{ $('Detect Anomalies').first().json.detectedAt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9804db9a-1fb3-472e-af4f-73e8e2c9e441",
+      "name": "Build Alert Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1392,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "healthy",
+              "type": "string"
+            },
+            {
+              "id": "checkedAt",
+              "name": "checkedAt",
+              "value": "={{ $json.detectedAt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "00484976-6505-4717-95b9-7d1156e6a800",
+      "name": "Log Healthy Tick",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "asadullah.skilled@gmail.com",
+        "subject": "={{ $json.title }}",
+        "message": "={{ '<p><strong>' + $json.title + '</strong></p><pre>' + $json.summary + '</pre>' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "YOUR_ID_HERE",
+      "name": "Email Ops Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        0
+      ],
+      "webhookId": "e66bf712-0fd2-4af7-944f-cd32db2c933f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_VALUE_HERE",
+          "mode": "list",
+          "cachedResultName": "Record",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_YMMhsG_J6TNNL8eiFbmEWN7mx7llOpRA3kcqYot8jM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_YMMhsG_J6TNNL8eiFbmEWN7mx7llOpRA3kcqYot8jM/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "budget",
+              "displayName": "budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "submittedAt",
+              "displayName": "submittedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "leadScore",
+              "displayName": "leadScore",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scoreReason",
+              "displayName": "scoreReason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "personalizedMessage",
+              "displayName": "personalizedMessage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "35281ba9-0e2c-441c-928f-ebaa62400f1a",
+      "name": "Log Alert to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1568,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Nexus — AI Operations Hub\n\nFlow: Every 5 min -> fetch Sales/Support/Payments metrics -> detect anomalies -> if any: AI investigates root cause and emails an alert + logs to sheet; if none: log a healthy tick\n\nSetup Checklist:\n1. Replace the example.com API URLs with your real metrics endpoints\n2. Connect OpenAI credential to \"GPT-5 mini\"\n3. Connect Gmail credential to \"Email Ops Alert\"\n4. Connect Google Sheets credential and set the spreadsheet ID for \"Log Alert to Sheet\"",
+        "height": 320,
+        "width": 700,
+        "color": 5
+      },
+      "id": "sticky-note-nexus-01",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        304,
+        -288
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 5 min": {
+      "main": [
+        [
+          {
+            "node": "Fetch Sales Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Sales Metrics": {
+      "main": [
+        [
+          {
+            "node": "Fetch Support Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Payments": {
+      "main": [
+        [
+          {
+            "node": "Detect Anomalies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Anomalies": {
+      "main": [
+        [
+          {
+            "node": "Has Anomalies?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Anomalies?": {
+      "main": [
+        [
+          {
+            "node": "AI Investigator",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Healthy Tick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Investigator": {
+      "main": [
+        [
+          {
+            "node": "Build Alert Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Investigator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Support Queue": {
+      "main": [
+        [
+          {
+            "node": "Fetch Payments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alert Payload": {
+      "main": [
+        [
+          {
+            "node": "Email Ops Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Ops Alert": {
+      "main": [
+        [
+          {
+            "node": "Log Alert to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "YOUR_VERSIONID_HERE",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "YOUR_INSTANCEID_HERE"
+  },
+  "nodeGroups": [],
+  "id": "kLP7lSLVmr3qxOBD",
+  "tags": []
+}
